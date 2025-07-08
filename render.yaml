@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: alina-mega-sales-aibot
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python main.py"
+    pythonVersion: 3.10.13
+    plan: free
+    branch: main
+    repo: https://github.com/Alex1966design/alina-mega-sales-aibot
