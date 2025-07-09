@@ -1,5 +1,3 @@
-
-python
 from telegram.ext import Application, CommandHandler
 
 TELEGRAM_TOKEN = "7598269211:AAH5zTrpyfQ5R1fGUS6M8rSi_vD-GgE_DOI"
