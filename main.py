@@ -4,68 +4,47 @@ import logging
 
 from dotenv import load_dotenv
 from aiohttp import web
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from aiogram import Bot, Dispatcher, types
 
-# ---------- базовая настройка ----------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-)
-
+# Загружаем переменные окружения
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
-PORT = int(os.getenv("PORT", "10000"))  # Render передает порт в переменной PORT
+PORT = int(os.getenv("PORT", "10000"))  # Render передаёт порт сюда
 
-# ---------- хендлеры бота ----------
-async def start_cmd(update, context):
-    await update.message.reply_text("Привет! Я Алина 🤖 Работаю на Render.")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
 
-async def echo_text(update, context):
-    await update.message.reply_text(f"Ты написал: {update.message.text}")
+logging.basicConfig(level=logging.INFO)
 
-# ---------- healthcheck для Render ----------
-async def health(_request):
-    return web.Response(text="ok")
+# --- Бот ---
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+@dp.message_handler(commands=["start"])
+async def cmd_start(message: types.Message):
+    await message.reply("Привет! 🚀 Я Алина — нейро-чемпион по продажам!")
+
+# --- Healthcheck ---
+async def health(request):
+    return web.Response(text="OK")
 
 async def start_web():
     app = web.Application()
     app.router.add_get("/healthz", health)
-    app.router.add_get("/", health)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logging.info(f"Healthcheck running on :{PORT}/healthz")
-    # держим процесс живым
-    await asyncio.Event().wait()
 
-# ---------- запуск бота (в отдельном потоке) ----------
+# --- Запуск ---
 def run_bot_blocking():
-    if not TOKEN:
-        raise RuntimeError("No Telegram token found! Set BOT_TOKEN or TELEGRAM_TOKEN")
+    from aiogram import executor
+    executor.start_polling(dp, skip_updates=True)
 
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_text))
-
-    # run_polling — блокирующий; снимем webhook перед стартом
-    async def _pre():
-        try:
-            await app.bot.delete_webhook(drop_pending_updates=True)
-        except Exception as e:
-            logging.warning(f"delete_webhook failed: {e}")
-
-    app.run_polling(
-        initialize=_pre,  # выполнится перед запуском
-        close_loop=False
-    )
-
-# ---------- точка входа ----------
 async def main():
     web_task = asyncio.create_task(start_web())
-    bot_task = asyncio.to_thread(run_bot_blocking)  # запускаем PTB в отдельном потоке
+    bot_task = asyncio.to_thread(run_bot_blocking)
     await asyncio.gather(web_task, bot_task)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
