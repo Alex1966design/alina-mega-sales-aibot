@@ -1,7 +1,7 @@
 from telebot import TeleBot
 from telebot.apihelper import ApiTelegramException
 
-bot = TeleBot(token='7598269211:AAH5zTrpyfQ5R1fGUS6M8rSi_vD-GgE_DOI')
+bot = TeleBot(token='7964619241:AAFoFWilFMBrK9ep5QfD-wlGBupG2K3WoBw')
 
 try:
     bot_info = bot.get_me()
