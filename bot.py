@@ -1,12 +1,36 @@
 # -*- coding: utf-8 -*-
 import os
 import asyncio
+from aiogram import Bot
+
+# --- Проверка токена ---
+TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("BOT_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("❌ Ошибка: не найден TELEGRAM_TOKEN или BOT_TOKEN в переменных окружения!")
+
+# Проверка токена только при запуске (один раз)
+async def check_token_validity():
+    bot = Bot(token=TOKEN)
+    try:
+        me = await bot.get_me()
+        print(f"✅ Токен активен! Бот авторизован как @{me.username}")
+    except Exception as e:
+        print(f"❌ Ошибка авторизации токена: {e}")
+        raise
+    finally:
+        await bot.session.close()
+
+# Запускаем проверку (однократно)
+asyncio.run(check_token_validity())
+
+import asyncio
+asyncio.run(check_token_validity())
+import asyncio
 import logging
 from datetime import datetime
-
 from dotenv import load_dotenv
 from aiohttp import web
-
 # ---- aiogram v3 ----
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
