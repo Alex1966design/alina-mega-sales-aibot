@@ -1,15 +1,22 @@
 # -*- coding: utf-8 -*-
 import os
 import asyncio
+from dotenv import load_dotenv
 from aiogram import Bot
+
+# Загружаем .env (если он есть), потом читаем переменные окружения Railway
+load_dotenv()
 
 # --- Проверка токена ---
 TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("BOT_TOKEN")
 
+# Диагностика (не печатает сам токен)
+print(f"Env check → TELEGRAM_TOKEN: {'set' if os.getenv('TELEGRAM_TOKEN') else 'missing'}, "
+      f"BOT_TOKEN: {'set' if os.getenv('BOT_TOKEN') else 'missing'}")
+
 if not TOKEN:
     raise RuntimeError("❌ Ошибка: не найден TELEGRAM_TOKEN или BOT_TOKEN в переменных окружения!")
 
-# Проверка токена только при запуске (один раз)
 async def check_token_validity():
     bot = Bot(token=TOKEN)
     try:
@@ -20,6 +27,8 @@ async def check_token_validity():
         raise
     finally:
         await bot.session.close()
+
+asyncio.run(check_token_validity())
 
 # Запускаем проверку (однократно)
 asyncio.run(check_token_validity())
