@@ -3,3 +3,10 @@ __pycache__/
 *.pyc
 alina.db
 .env
+.env
+local.db
+__pycache__/
+*.pyc
+.venv/
+.idea/
+.vscode/
