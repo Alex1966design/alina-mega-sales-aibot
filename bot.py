@@ -48,7 +48,7 @@ from aiogram.types import Message, Update
 # ---- SQLAlchemy async ----
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import BigInteger, String, Text, ForeignKey, DateTime
+from sqlalchemy import BigInteger, String, Text, ForeignKey, DateTime, select
 
 # ---- OpenAI (async) ----
 from openai import AsyncOpenAI
@@ -61,20 +61,18 @@ TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# Режим работы: 'polling' (локально) или 'webhook' (Railway)
-MODE = os.getenv("MODE", "polling").lower()
-
+MODE = os.getenv("MODE", "polling").lower()  # polling (локально) или webhook (Railway)
 PORT = int(os.getenv("PORT", "10000"))
 DB_URL = os.getenv("DATABASE_URL")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # пример: https://<app>.up.railway.app
 WEBHOOK_PATH = f"/webhook/{(TOKEN or '')[:10]}"
 
 if not TOKEN:
-    raise RuntimeError("No Telegram token found! Set BOT_TOKEN or TELEGRAM_TOKEN")
+    raise RuntimeError("❌ Не найден TELEGRAM_TOKEN или BOT_TOKEN!")
 
 if not DB_URL:
-    logging.warning("DATABASE_URL not set — using in-memory SQLite (for local dev)")
-    DB_URL = "sqlite+aiosqlite:///:memory:"
+    logging.warning("DATABASE_URL not set — using local SQLite (local.db)")
+    DB_URL = "sqlite+aiosqlite:///local.db"
 
 # Преобразуем URL в async-формат для SQLAlchemy
 def to_async_url(url: str) -> str:
@@ -114,7 +112,7 @@ class Lead(Base):
     __tablename__ = "tg_leads"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("tg_users.id", ondelete="CASCADE"), index=True)
-    contact: Mapped[str] = mapped_column(String(256))   # телефон/почта/телеграм
+    contact: Mapped[str] = mapped_column(String(256))
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     user: Mapped[User] = relationship(back_populates="leads")
@@ -161,9 +159,9 @@ dp = Dispatcher()
 
 @dp.message(CommandStart())
 async def on_start(message: Message):
-    # upsert пользователя
     async with Session() as s:
-        u = await s.scalar(s.sync_session.query(User).filter(User.tg_id == message.from_user.id))  # type: ignore
+        res = await s.execute(select(User).where(User.tg_id == message.from_user.id))
+        u = res.scalar_one_or_none()
         if not u:
             u = User(
                 tg_id=message.from_user.id,
@@ -177,20 +175,18 @@ async def on_start(message: Message):
 
 @dp.message(Command("lead"))
 async def create_lead(message: Message):
-    """
-    /lead <контакт> [примечание]
-    Пример: /lead +34 600 123 456 нужен расчет по тарифам
-    """
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
         return await message.answer("Пришли контакт после команды:\n/lead <контакт> [примечание]")
+
     payload = args[1]
     parts = payload.split(maxsplit=1)
     contact = parts[0]
     note = parts[1] if len(parts) > 1 else None
 
     async with Session() as s:
-        u = await s.scalar(s.sync_session.query(User).filter(User.tg_id == message.from_user.id))  # type: ignore
+        res = await s.execute(select(User).where(User.tg_id == message.from_user.id))
+        u = res.scalar_one_or_none()
         if not u:
             u = User(
                 tg_id=message.from_user.id,
@@ -206,9 +202,9 @@ async def create_lead(message: Message):
 
 @dp.message(F.text)
 async def log_and_respond(message: Message):
-    # логируем
     async with Session() as s:
-        u = await s.scalar(s.sync_session.query(User).filter(User.tg_id == message.from_user.id))  # type: ignore
+        res = await s.execute(select(User).where(User.tg_id == message.from_user.id))
+        u = res.scalar_one_or_none()
         if not u:
             u = User(
                 tg_id=message.from_user.id,
@@ -221,7 +217,6 @@ async def log_and_respond(message: Message):
         s.add(MessageLog(user_id=u.id, text=message.text or ""))
         await s.commit()
 
-    # «печатает…» пока ждём LLM
     try:
         await bot.send_chat_action(message.chat.id, "typing")
     except Exception:
@@ -244,7 +239,7 @@ async def start_web():
     app = web.Application()
     app.router.add_get("/healthz", health)
     app.router.add_get("/", health)
-    app.router.add_post(WEBHOOK_PATH, webhook)  # для webhook-режима
+    app.router.add_post(WEBHOOK_PATH, webhook)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
@@ -260,13 +255,11 @@ async def main():
     if MODE == "webhook":
         if not WEBHOOK_URL:
             raise RuntimeError("WEBHOOK_URL not set (e.g., https://<project>.up.railway.app)")
-        # ставим вебхук
         await bot.delete_webhook(drop_pending_updates=True)
         await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}", drop_pending_updates=True)
         logging.info(f"Webhook set to {WEBHOOK_URL}{WEBHOOK_PATH}")
-        await start_web()  # только веб-сервер
+        await start_web()
     else:
-        # локальная разработка — polling + healthcheck
         try:
             await bot.delete_webhook(drop_pending_updates=True)
         except Exception as e:
