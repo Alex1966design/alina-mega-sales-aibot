@@ -4,3 +4,4 @@ requests>=2.31.0
 sqlalchemy>=2.0
 asyncpg
 aiosqlite
+openai>=1.40.0
